@@ -11,8 +11,10 @@ This may just be so you can have a nice display at home for your family. But wor
 ![Last identified](docs/screenshots/1.png)
 ![Species profile](docs/screenshots/2.png)
 ![Activity patterns](docs/screenshots/3.png)
-![Most popular species](docs/screenshots/4.png)
-![Rare visitors](docs/screenshots/5.png)
+![Most popular species 24hrs](docs/screenshots/4.png)
+![Most popular species 30days](docs/screenshots/5.png)
+![Rare visitors](docs/screenshots/6.png)
+![Collage](docs/screenshots/7.png)
 
 ## Features
 
