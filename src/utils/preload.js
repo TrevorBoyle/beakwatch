@@ -6,6 +6,13 @@ export function birdImageUrl(commonName, width) {
   return `/birds/${toSlug(commonName)}.jpg?name=${encodeURIComponent(commonName)}&w=${targetWidth}`
 }
 
+// User-supplied bird cutout illustration for the Collage panel. See
+// bird-cutouts/README.md — these are static files, no query params, no
+// on-demand generation.
+export function collageImageUrl(commonName) {
+  return `/collage/${toSlug(commonName)}.png`
+}
+
 const inflight = new Set()
 
 const schedule = typeof requestIdleCallback === 'function'

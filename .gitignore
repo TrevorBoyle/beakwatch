@@ -5,6 +5,11 @@ server/.env
 .claude/
 .DS_Store
 
+# User-supplied bird cutout images for the Collage panel — personal images,
+# not meant to ship in the public repo.
+bird-cutouts/*.png
+!bird-cutouts/README.md
+
 # internal working docs — never publish
 REVIEW.md
 CODE_REVIEW_GUIDE.md

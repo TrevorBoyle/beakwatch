@@ -26,7 +26,6 @@ vi.mock('./hooks/useHistory.js', () => ({
 }))
 vi.mock('./utils/wikipedia.js', () => ({
   fetchWikipedia: vi.fn().mockResolvedValue({ extract: 'A tiny bird.', photoUrl: null, attribution: null }),
-  fetchAttribution: vi.fn().mockResolvedValue(null),
 }))
 vi.mock('./hooks/useServer.js', () => ({
   useServer: () => ({ serverInfo: null, switchServer: vi.fn() }),
@@ -37,11 +36,11 @@ import App from './App.jsx'
 describe('App', () => {
   it('renders the sidebar', async () => {
     await act(async () => { render(<App />) })
-    expect(screen.getByText('Recent sightings')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Recently Identified' })).toBeInTheDocument()
   })
 
   it('renders the stats bar', async () => {
     await act(async () => { render(<App />) })
-    expect(screen.getByText(/species today/)).toBeInTheDocument()
+    expect(screen.getByText(/species last 24hrs/)).toBeInTheDocument()
   })
 })

@@ -10,7 +10,6 @@ vi.mock('../../utils/wikipedia.js', () => ({
     photoUrl: null,
     attribution: null,
   }),
-  fetchAttribution: vi.fn().mockResolvedValue(null),
 }))
 
 import LastIdentified from './LastIdentified.jsx'
@@ -41,6 +40,6 @@ describe('LastIdentified', () => {
       render(<LastIdentified detection={detection} isSpotlight={true} todayCount={42} />)
     })
     expect(screen.getByText('Species Spotlight')).toBeInTheDocument()
-    expect(screen.getByText(/42 detections today/)).toBeInTheDocument()
+    expect(screen.getByText(/42 detections last 24hrs/)).toBeInTheDocument()
   })
 })

@@ -20,9 +20,10 @@ export default defineConfig(({ command }) => {
     server: {
       proxy: {
         '/api': apiTarget,
+        '/collage': apiTarget,
         '/birds': {
           target: apiTarget,
-          // Only proxy .jpg requests; let vite serve placeholder.svg etc. from public/
+          // Only proxy .jpg requests; let vite serve question-mark.png etc. from public/
           bypass: (req) => (req.url.split('?')[0].endsWith('.jpg') ? undefined : req.url),
         },
       },

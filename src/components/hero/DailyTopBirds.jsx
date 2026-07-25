@@ -22,7 +22,7 @@ const COLOR_STOPS = [
 ]
 
 function getColor(intensity) {
-  if (intensity === 0) return '#e2e8f0'
+  if (intensity === 0) return '#EFE7D6'
   const t = Math.min(intensity, 1)
   const segments = COLOR_STOPS.length - 1
   const seg = Math.min(Math.floor(t * segments), segments - 1)
@@ -76,8 +76,8 @@ export default function DailyTopBirds({ todayStats }) {
     const canvasWrapper = canvasWrapperRef.current
     if (!canvas || !container || !canvasWrapper || top10.length === 0) return
 
-    // Thumbnails are served by the server image cache (server/birdImages.js) —
-    // missing images are fetched from Wikipedia and cached to disk on first request.
+    // Thumbnails are served by the server (server/index.js) — a species
+    // without its own cutout gets the question-mark placeholder instead.
     const images = {}
     top10.forEach(({ name }) => {
       const url = birdImageUrl(name, THUMB_SIZE)
@@ -122,13 +122,13 @@ export default function DailyTopBirds({ todayStats }) {
       ctx.clearRect(0, 0, W, totalH)
 
       // Hour header labels
-      ctx.font = '11px Inter, system-ui, sans-serif'
+      ctx.font = `11px 'Public Sans', system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       HOURS.forEach(h => {
         if (h % 3 === 0) {
           const x = LABEL_W + h * (cellW + CELL_GAP) + cellW / 2
-          ctx.fillStyle = '#94a3b8'
+          ctx.fillStyle = '#9A8F7C'
           ctx.fillText(hourLabel(h), x, HEADER_H / 2 - 5)
         }
       })
@@ -137,7 +137,7 @@ export default function DailyTopBirds({ todayStats }) {
       const arrowX = LABEL_W + currentHour * (cellW + CELL_GAP) + cellW / 2
       const arrowSize = 8
       const arrowY = HEADER_H - arrowSize - 1
-      ctx.fillStyle = '#f59e0b'
+      ctx.fillStyle = '#D98F35'
       ctx.beginPath()
       ctx.moveTo(arrowX, arrowY + arrowSize)
       ctx.lineTo(arrowX - arrowSize, arrowY)
@@ -149,24 +149,30 @@ export default function DailyTopBirds({ todayStats }) {
         const y = HEADER_H + row * (cellH + CELL_GAP)
         const maxForRow = Math.max(1, ...Object.values(hours))
 
-        // Rounded-square thumbnail
+        // Rounded-square thumbnail. Background fills the square first so a
+        // non-square source (most bird cutouts aren't perfectly square)
+        // shows through in the letterboxed margins instead of distorting to
+        // fill the square — same contain-fit treatment as everywhere else
+        // bird images appear in the app.
         const img = images[name]
         const thumbX = 0
         const thumbY = y + (cellH - thumbSize) / 2
         ctx.save()
         roundRect(ctx, thumbX, thumbY, thumbSize, thumbSize, CELL_RADIUS)
+        ctx.fillStyle = '#EFE7D6'
+        ctx.fill()
         if (img?.complete && img.naturalWidth > 0 && !img._failed) {
           ctx.clip()
-          ctx.drawImage(img, thumbX, thumbY, thumbSize, thumbSize)
-        } else {
-          ctx.fillStyle = '#e2e8f0'
-          ctx.fill()
+          const scale = Math.min(thumbSize / img.naturalWidth, thumbSize / img.naturalHeight)
+          const dw = img.naturalWidth * scale
+          const dh = img.naturalHeight * scale
+          ctx.drawImage(img, thumbX + (thumbSize - dw) / 2, thumbY + (thumbSize - dh) / 2, dw, dh)
         }
         ctx.restore()
 
         // Species label
-        ctx.font = '500 12px Inter, system-ui, sans-serif'
-        ctx.fillStyle = '#475569'
+        ctx.font = `500 12px 'Public Sans', system-ui, sans-serif`
+        ctx.fillStyle = '#5B5346'
         ctx.textAlign = 'left'
         ctx.textBaseline = 'middle'
         const label = name.length > 18 ? name.slice(0, 17) + '…' : name
@@ -184,7 +190,7 @@ export default function DailyTopBirds({ todayStats }) {
 
           // Count label inside cell
           if (count > 0 && cellW >= 18 && cellH >= 16) {
-            ctx.font = `bold ${cellW >= 26 ? 10 : 8}px Inter, system-ui, sans-serif`
+            ctx.font = `bold ${cellW >= 26 ? 10 : 8}px 'Public Sans', system-ui, sans-serif`
             ctx.fillStyle = intensity > 0.55 ? 'rgba(255,255,255,0.92)' : '#3a6b14'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
@@ -205,10 +211,10 @@ export default function DailyTopBirds({ todayStats }) {
   }, [top10])
 
   return (
-    <div ref={containerRef} className="h-full flex flex-col p-8 bg-white overflow-hidden">
-      <h2 className="text-2xl font-bold text-slate-800 mb-1">Activity Patterns</h2>
-      <p className="text-sm text-slate-400 mb-6">
-        Detection frequency by hour · today · <span className="text-amber-500 font-medium">▼ now</span>
+    <div ref={containerRef} className="h-full flex flex-col p-8 bg-paper-raised overflow-hidden">
+      <h2 className="text-2xl font-display font-bold text-ink mb-1">Activity Patterns</h2>
+      <p className="text-sm text-ink-faint mb-6">
+        Detection frequency by hour · last 24hrs · <span className="text-amber font-medium">▼ now</span>
       </p>
       <div ref={canvasWrapperRef} className="flex-1 min-h-0">
         <canvas ref={canvasRef} className="block" />

@@ -12,10 +12,10 @@ describe('BirdImage', () => {
     expect(img.src).toMatch(/w=\d+/)
   })
 
-  it('falls back to placeholder when the image fails to load', async () => {
+  it('falls back to the question-mark placeholder when the image fails to load', async () => {
     render(<BirdImage commonName="Unknown Bird" alt="Unknown Bird" />)
     const img = screen.getByRole('img')
     await act(async () => { img.dispatchEvent(new Event('error')) })
-    expect(img.src).toContain('placeholder')
+    expect(img.src).toContain('/birds/question-mark.png')
   })
 })

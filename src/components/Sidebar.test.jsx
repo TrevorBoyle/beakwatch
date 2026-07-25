@@ -4,9 +4,6 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('./BirdImage.jsx', () => ({
   default: ({ alt }) => <img alt={alt} />,
 }))
-vi.mock('../hooks/useAttribution.js', () => ({
-  useAttribution: () => null,
-}))
 vi.mock('../hooks/useServer.js', () => ({
   useServer: () => ({ serverInfo: null, switchServer: vi.fn() }),
 }))
@@ -19,9 +16,9 @@ const detections = [
 ]
 
 describe('Sidebar', () => {
-  it('renders "Recent sightings" heading', () => {
+  it('renders "Recently Identified" heading', () => {
     render(<Sidebar detections={detections} todayStats={[]} />)
-    expect(screen.getByText('Recent sightings')).toBeInTheDocument()
+    expect(screen.getByText('Recently Identified')).toBeInTheDocument()
   })
 
   it('renders a card for each detection', () => {

@@ -1,17 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-green: #5c9430;
-  --color-brand-green-light: #90c45f;
+  --color-paper: #FBF6EC;
+  --color-paper-raised: #FFFFFF;
+  --color-ink: #26211B;
+  --color-ink-soft: #5B5346;
+  --color-ink-faint: #9A8F7C;
+  --color-line: #E6DCC8;
+  --color-line-soft: #EFE7D6;
+  --color-forest: #3F7D4C;
+  --color-forest-soft: #E7EFDF;
+  --color-amber: #D98F35;
+  --color-amber-soft: #F8E7CC;
+  --color-amber-dark: #A85D1F;
+  --color-amber-dark-soft: #EAD2B8;
+  --color-robin-red: #C1483F;
+  --color-robin-red-soft: #F4DFDB;
+  --color-hero-overlay: #20362F;
+
+  --font-display: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --radius-card: 14px;
+  --radius-panel: 22px;
 }
 
 @layer base {
   html, body, #root {
     height: 100%;
     margin: 0;
-    background-color: #f8fafc;
-    color: #1e293b;
-    font-family: Inter, system-ui, sans-serif;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
+  }
+}
+
+@keyframes collage-fade-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .collage-tile {
+    animation: collage-fade-in 500ms ease-out both;
   }
 }

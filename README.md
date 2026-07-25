@@ -18,7 +18,7 @@ This may just be so you can have a nice display at home for your family. But wor
 
 - **Live detections sidebar** — newest detection per species, deduplicated.
 - **Rotating hero** — last identified, species spotlight, top 10 over 30 days, 6 rarest visitors, today's species hourly chart.
-- **On-demand bird images** — fetched from Wikipedia the first time a species appears, then cached on disk forever. The repo ships zero images.
+- **Bird images** — shows your own cutout for a species if you've supplied one (see `bird-cutouts/README.md`), otherwise a placeholder. The repo ships zero species photos.
 - **Local weather** — current conditions from [Open-Meteo](https://open-meteo.com/) (no API key).
 - **Multi-server support** — point at one or several BirdNET-Go instances and switch between them from the UI.
 
@@ -82,19 +82,17 @@ All config lives in `server/.env` (see `.env.example`).
 ```
 Browser  ──/api/*─▶  Express (server/index.js)  ──▶  BirdNET-Go (REST)
                           │
-                          ├──/birds/*─▶  cache/birds/  (disk)
+                          └──/birds/*─▶  bird-cutouts/<slug>.png
                           │                    │ miss
                           │                    ▼
-                          │              Wikipedia REST API
+                          │              public/birds/question-mark.png
                           │
                           └──static────▶  dist/  (built React app)
 ```
 
-- **Express** (`server/`): proxies BirdNET-Go, serves the built frontend, and runs the on-demand image cache.
+- **Express** (`server/`): proxies BirdNET-Go, serves the built frontend, and serves bird images.
 - **React + Vite** (`src/`): the kiosk UI. Tailwind for styling, Vitest for tests.
-- **Image cache** (`server/birdImages.js`): on a request for `/birds/<slug>.jpg?name=<commonName>&w=<width>`, serves from `cache/birds/<slug>-<width>.jpg` if present; otherwise hits Wikipedia for the species summary, downloads the sized thumbnail, writes it to disk, and serves it. Concurrent requests for the same image are deduped; outbound traffic is capped at 2 concurrent requests with backoff on HTTP 429.
-
-The `cache/` directory is gitignored and grows organically as new species are detected (~50–200 KB per species).
+- **Bird images**: a request for `/birds/<slug>.jpg?name=<commonName>` serves `bird-cutouts/<slug>.png` if you've supplied one, otherwise the `public/birds/question-mark.png` placeholder. Species summaries (the short bio text) are still fetched from Wikipedia client-side (`src/utils/wikipedia.js`) — only the photo itself avoids Wikipedia.
 
 ## Development
 
@@ -121,7 +119,6 @@ Vite proxies `/api` and `/birds/*.jpg` to Express, so you don't need a separate 
 Beakwatch is designed for a **trusted LAN** and has no authentication. Specifically:
 
 - The `/api/server` POST route lets any client on the network switch the active BirdNET-Go instance.
-- The `/birds/*.jpg` route lets any client trigger Wikipedia downloads and disk writes to `cache/`, and the `?name=` parameter controls which Wikipedia page an image is cached from — so a client could fill the disk or poison cached images.
 
 If you expose Beakwatch beyond a network you trust, put it behind a reverse proxy with auth, or gate these routes yourself.
 
@@ -131,7 +128,7 @@ Issues and PRs are welcome. Before opening a PR, run `npm run lint && npm test` 
 
 ## Attribution
 
-Bird photos and summaries come from [Wikipedia](https://en.wikipedia.org/) and [Wikimedia Commons](https://commons.wikimedia.org/). Each photo is displayed with its photographer credit and licence (`src/components/Attribution.jsx`). **Keep this attribution visible** — it is the licence requirement for reusing those images.
+Species summaries (the short bio text on the Species Profile / Last Identified screens) come from [Wikipedia](https://en.wikipedia.org/). Bird photos are your own (`bird-cutouts/`) or the built-in placeholder — Beakwatch no longer displays Wikimedia photos.
 
 Weather data from [Open-Meteo](https://open-meteo.com/) under their terms of use.
 

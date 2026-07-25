@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { birdImageUrl } from '../utils/preload.js'
 
-const PLACEHOLDER = '/birds/placeholder.svg'
+const PLACEHOLDER = '/birds/question-mark.png'
 
 export default function BirdImage({ commonName, alt, className = '', width = 320, onLoad }) {
   const [failed, setFailed] = useState(false)

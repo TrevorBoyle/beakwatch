@@ -1,9 +1,8 @@
 import express from 'express'
-import { existsSync } from 'fs'
+import { existsSync, promises as fs } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import dotenv from 'dotenv'
-import { getBirdImage } from './birdImages.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // Skip in tests so the suite controls its own env and never inherits a
@@ -15,6 +14,8 @@ const app = express()
 app.disable('x-powered-by')
 app.use(express.json())
 const PORT = process.env.PORT || 2325
+const BIRD_CUTOUTS_DIR = join(__dirname, '..', 'bird-cutouts')
+const QUESTION_MARK_PATH = join(__dirname, '..', 'public', 'birds', 'question-mark.png')
 const LAT = process.env.LAT || '51.5074'
 const LON = process.env.LON || '-0.1278'
 
@@ -90,39 +91,63 @@ app.get('/api/recent', async (req, res) => {
   }
 })
 
-// GET /api/today — flat [{commonName, hour, count}] for today's heatmap
-// Accepts optional ?date=YYYY-MM-DD to fetch a specific day (for testing)
-// Tries analytics/daily first; falls back to aggregating live detections if empty
+// Per-species hourly-count array (index 0-23) for one calendar day.
+// Tries analytics/daily first; falls back to aggregating live detections if empty.
+async function fetchDayHourly(date) {
+  const daily = await birdnetFetch(`/api/v2/analytics/species/daily?date=${date}`)
+  const bySpecies = {}
+  if (Array.isArray(daily) && daily.length > 0) {
+    for (const s of daily) {
+      if (!Array.isArray(s.hourly_counts)) continue
+      bySpecies[s.common_name] = s.hourly_counts
+    }
+    return bySpecies
+  }
+  const recent = await birdnetFetch('/api/v2/detections/recent?limit=2000')
+  for (const d of recent) {
+    if (d.date !== date) continue
+    const hour = d.time ? parseInt(d.time.slice(0, 2), 10) : null
+    if (hour === null || isNaN(hour)) continue
+    bySpecies[d.commonName] = bySpecies[d.commonName] ?? Array(24).fill(0)
+    bySpecies[d.commonName][hour] += 1
+  }
+  return bySpecies
+}
+
+function flattenHourly(bySpecies) {
+  const flat = []
+  for (const [commonName, hours] of Object.entries(bySpecies)) {
+    hours.forEach((count, hour) => { if (count > 0) flat.push({ commonName, hour, count }) })
+  }
+  return flat
+}
+
+// GET /api/today — flat [{commonName, hour, count}] for the rolling 24 hours
+// ending now, keyed by calendar hour-of-day (0-23). For hours already
+// reached today we use today's count; for hours today hasn't reached yet
+// we use yesterday's count at that same hour — together they span exactly
+// the last 24 hours, so the heatmap never shows empty "hasn't happened
+// yet" hours early in the day. Accepts optional ?date=YYYY-MM-DD to fetch
+// one specific calendar day instead (skips the rolling merge — for testing).
 app.get('/api/today', async (req, res) => {
   try {
-    const today = req.query.date || todayStr()
-    const daily = await birdnetFetch(`/api/v2/analytics/species/daily?date=${today}`)
-    if (Array.isArray(daily) && daily.length > 0) {
-      const flat = []
-      for (const s of daily) {
-        if (!Array.isArray(s.hourly_counts)) continue
-        s.hourly_counts.forEach((count, hour) => {
-          if (count > 0) flat.push({ commonName: s.common_name, hour, count })
-        })
-      }
-      return res.json(flat)
+    if (req.query.date) {
+      return res.json(flattenHourly(await fetchDayHourly(req.query.date)))
     }
 
-    // Fallback: aggregate from live detections (analytics not yet computed for today)
-    const recent = await birdnetFetch('/api/v2/detections/recent?limit=2000')
-    const hourCounts = {}
-    for (const d of recent) {
-      if (d.date !== today) continue
-      const hour = d.time ? parseInt(d.time.slice(0, 2), 10) : null
-      if (hour === null || isNaN(hour)) continue
-      const key = `${d.commonName}::${hour}`
-      hourCounts[key] = (hourCounts[key] ?? 0) + 1
+    const currentHour = new Date().getHours()
+    const [todayHourly, yesterdayHourly] = await Promise.all([
+      fetchDayHourly(todayStr()),
+      fetchDayHourly(daysAgoStr(1)),
+    ])
+    const names = new Set([...Object.keys(todayHourly), ...Object.keys(yesterdayHourly)])
+    const merged = {}
+    for (const name of names) {
+      const t = todayHourly[name] ?? Array(24).fill(0)
+      const y = yesterdayHourly[name] ?? Array(24).fill(0)
+      merged[name] = Array.from({ length: 24 }, (_, h) => (h <= currentHour ? t[h] : y[h]))
     }
-    const flat = Object.entries(hourCounts).map(([key, count]) => {
-      const [commonName, hourStr] = key.split('::')
-      return { commonName, hour: Number(hourStr), count }
-    })
-    res.json(flat)
+    res.json(flattenHourly(merged))
   } catch (err) {
     res.status(502).json({ error: err.message })
   }
@@ -132,6 +157,16 @@ app.get('/api/today', async (req, res) => {
 // Combines three BirdNET-Go calls in parallel
 app.get('/api/history', async (req, res) => {
   try {
+    // "New this week" needs BirdNET-Go's /detections/new endpoint specifically
+    // — it's the one that tracks first_heard_date, i.e. genuinely first-ever
+    // sightings, which /analytics/species/summary has no concept of (it just
+    // reports "any activity in this window", which would settle into meaning
+    // "heard at all this week" rather than "new" once the season's already-
+    // common species start recurring week to week). The catch: BirdNET-Go
+    // tracks "new" separately from the main detections log, so it can go
+    // stale — deleting a detection later (e.g. a reviewed false positive)
+    // doesn't retroactively remove its "new" entry. Cross-checking against
+    // the all-time summary (which reflects deletions) filters those out.
     const [summary30, allTime, newSpecies] = await Promise.all([
       birdnetFetch(`/api/v2/analytics/species/summary?start_date=${daysAgoStr(30)}&end_date=${todayStr()}`).catch(() => []),
       birdnetFetch(`/api/v2/analytics/species/summary?start_date=2010-01-01&end_date=${todayStr()}`).catch(() => []),
@@ -141,19 +176,33 @@ app.get('/api/history', async (req, res) => {
     const top30Days = [...summary30]
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
-      .map(s => ({ commonName: s.common_name, count: s.count }))
+      .map(s => ({ commonName: s.common_name, count: s.count, avgConfidence: s.avg_confidence ?? null }))
 
     const rareVisitors = [...allTime]
       .sort((a, b) => a.count - b.count)
-      .slice(0, 6)
-      .map(s => ({ commonName: s.common_name, allTimeCount: s.count }))
+      .slice(0, 16)
+      .map(s => ({ commonName: s.common_name, allTimeCount: s.count, avgConfidence: s.avg_confidence ?? null }))
+
+    // Keyed by every species BirdNET-Go has ever heard (not just the top30Days/
+    // rareVisitors slices above) — the Species Profile slide can spotlight any
+    // species, not only the ones in those two lists.
+    const confidenceBySpecies = {}
+    for (const s of allTime) {
+      if (s.avg_confidence != null) confidenceBySpecies[s.common_name] = s.avg_confidence
+    }
+
+    const allTimeNames = new Set(allTime.map(s => s.common_name))
+    const newThisWeekCount = new Set(
+      newSpecies.map(s => s.common_name).filter(name => allTimeNames.has(name))
+    ).size
 
     res.json({
       top30Days,
       rareVisitors,
+      confidenceBySpecies,
       speciesLast30Days: summary30.length,
       speciesAllTime: allTime.length,
-      newThisWeek: newSpecies.length,
+      newThisWeek: newThisWeekCount,
     })
   } catch (err) {
     res.status(502).json({ error: err.message })
@@ -177,42 +226,80 @@ app.get('/api/weather', async (req, res) => {
   try {
     // auto = Open-Meteo picks the timezone for the lat/lon, so weather timestamps
     // match the kiosk's deployment location without us hard-coding Europe/London.
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,wind_speed_10m&wind_speed_unit=mph&temperature_unit=celsius&timezone=auto`
+    // daily=sunrise,sunset (today only, forecast_days=1) rides along on the same call.
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,weather_code,wind_speed_10m&daily=sunrise,sunset&forecast_days=1&wind_speed_unit=kmh&temperature_unit=celsius&timezone=auto`
     const data = await fetch(url).then(r => r.json())
     const { temperature_2m: temp, weather_code: code, wind_speed_10m: wind } = data.current
+    // Sunrise/sunset come back as local ISO timestamps, e.g. "2026-07-21T05:12" — slice the HH:MM.
+    const sunrise = data.daily?.sunrise?.[0]?.slice(11, 16) ?? null
+    const sunset = data.daily?.sunset?.[0]?.slice(11, 16) ?? null
     res.json({
       temp: Math.round(temp),
       wind: Math.round(wind),
       code,
       label: WMO_LABELS[code] ?? 'Unknown',
       emoji: WMO_EMOJI[code] ?? '🌡️',
+      sunrise,
+      sunset,
     })
   } catch (err) {
     res.status(502).json({ error: err.message })
   }
 })
 
-// GET /birds/:filename — disk-cached bird images, fetched from Wikipedia on miss.
-// Expects ?name=<commonName> for the Wikipedia lookup, optional ?w=<width>.
+// GET /birds/:filename — a user-supplied cutout if one exists for the slug,
+// otherwise the question-mark placeholder.
 app.get('/birds/:filename', async (req, res, next) => {
   const m = req.params.filename.match(/^(.+)\.jpg$/)
   if (!m) return next()
   const slug = m[1]
   // Slugs come from toSlug() client-side and are always [a-z0-9-]. Anything
-  // else (encoded slashes, dots) could escape cache/birds/ via path traversal.
+  // else (encoded slashes, dots) could escape bird-cutouts/ via path traversal.
   if (!/^[a-z0-9-]+$/.test(slug)) return res.status(400).json({ error: 'Invalid image name' })
   const name = req.query.name
-  const width = Math.min(2000, Math.max(1, parseInt(req.query.w, 10) || 320))
   if (!name) return next()
 
   try {
-    const buf = await getBirdImage({ slug, name, width })
-    if (!buf) return res.status(404).end()
-    res.set('Content-Type', 'image/jpeg')
-    res.set('Cache-Control', 'public, max-age=31536000, immutable')
-    res.send(buf)
+    // A user-supplied cutout (see bird-cutouts/README.md) takes priority
+    // everywhere a bird image is shown — not just the Collage panel — and,
+    // like /collage, avoids long-lived caching since it may get swapped out
+    // by hand. Width is ignored: these are served as-is, no resizing pipeline.
+    try {
+      const reference = await fs.readFile(join(BIRD_CUTOUTS_DIR, `${slug}.png`))
+      res.set('Content-Type', 'image/png')
+      res.set('Cache-Control', 'no-cache')
+      return res.send(reference)
+    } catch { /* no cutout for this species — fall through to the placeholder */ }
+
+    // Not immutable/long-lived: a species with no reference cutout today can
+    // get one added at any time, at this same URL, so this shouldn't stick
+    // around in a browser cache once that happens.
+    const placeholder = await fs.readFile(QUESTION_MARK_PATH)
+    res.set('Content-Type', 'image/png')
+    res.set('Cache-Control', 'no-cache')
+    res.send(placeholder)
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /collage/:filename — user-supplied bird cutout illustrations for the
+// Collage panel (see bird-cutouts/README.md). Pure disk-serve — nothing is
+// generated here, so a missing file is just a 404 and the frontend quietly
+// leaves that species out of the collage. Unlike /birds, these files get
+// swapped out by hand as their owner iterates on the artwork, so this
+// deliberately avoids long-lived caching — no-cache forces a revalidation
+// (cheap: small local files, no upstream call) instead of `immutable`
+// leaving a stale image stuck in someone's browser for a year.
+app.get('/collage/:filename', async (req, res, next) => {
+  if (!/^[a-z0-9-]+\.png$/.test(req.params.filename)) return next()
+  try {
+    const buf = await fs.readFile(join(BIRD_CUTOUTS_DIR, req.params.filename))
+    res.set('Content-Type', 'image/png')
+    res.set('Cache-Control', 'no-cache')
+    res.send(buf)
+  } catch {
+    res.status(404).end()
   }
 })
 

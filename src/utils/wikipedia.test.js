@@ -6,7 +6,7 @@ beforeEach(() => {
 })
 
 describe('fetchWikipedia', () => {
-  it('returns photo and extract from Wikipedia summary API', async () => {
+  it('returns extract from Wikipedia summary API and ignores the thumbnail', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -20,7 +20,7 @@ describe('fetchWikipedia', () => {
 
     expect(result).toEqual({
       extract: 'The Eurasian wren is a tiny bird.',
-      photoUrl: 'https://example.com/wren.jpg',
+      photoUrl: null,
       attribution: null,
     })
     expect(fetch).toHaveBeenCalledWith(
